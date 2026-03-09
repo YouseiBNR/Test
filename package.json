@@ -1,0 +1,17 @@
+{
+  "name": "auto-translate-video",
+  "version": "1.0.0",
+  "description": "Automated video translation pipeline - Instagram Reel to Japanese subtitled MP4",
+  "scripts": {
+    "pipeline": "npx ts-node src/pipeline.ts"
+  },
+  "dependencies": {
+    "@remotion/install-whisper-cpp": "4.0.242",
+    "@remotion/captions": "4.0.242"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.0"
+  }
+}
