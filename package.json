@@ -3,22 +3,14 @@
   "version": "1.0.0",
   "description": "Automated video translation pipeline - Instagram Reel to Japanese subtitled MP4",
   "scripts": {
-    "pipeline": "npx ts-node src/pipeline.ts",
-    "studio": "npx remotion studio"
+    "pipeline": "npx ts-node src/pipeline.ts"
   },
   "dependencies": {
-    "@remotion/bundler": "4.0.242",
-    "@remotion/captions": "4.0.242",
-    "@remotion/cli": "4.0.242",
     "@remotion/install-whisper-cpp": "4.0.242",
-    "@remotion/renderer": "4.0.242",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "remotion": "4.0.242"
+    "@remotion/captions": "4.0.242"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "@types/react": "^18.3.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.6.0"
   }

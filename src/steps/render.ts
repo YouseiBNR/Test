@@ -1,91 +1,71 @@
 import { execSync } from 'child_process';
+import fs from 'fs';
 import path from 'path';
-import { bundle } from '@remotion/bundler';
-import { renderMedia, selectComposition } from '@remotion/renderer';
-import type { SubtitleEntry, VideoMetadata } from '../types';
+import type { SubtitleEntry } from '../types';
 
 const OUTPUT_PATH = path.resolve('./out/translated.mp4');
+const FONT_PATH = '/usr/share/fonts/opentype/ipafont-gothic/ipag.ttf';
 
-function getVideoMetadata(videoPath: string): VideoMetadata {
-  const durationStr = execSync(
-    `ffprobe -v error -show_entries format=duration -of csv=p=0 "${videoPath}"`
-  )
-    .toString()
-    .trim();
+function generateAssSubtitles(subtitles: SubtitleEntry[]): string {
+  const header = `[Script Info]
+Title: Auto Translated Subtitles
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
 
-  const widthStr = execSync(
-    `ffprobe -v error -select_streams v:0 -show_entries stream=width -of csv=p=0 "${videoPath}"`
-  )
-    .toString()
-    .trim();
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,IPAGothic,48,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,3,3,0,2,20,20,80,1
 
-  const heightStr = execSync(
-    `ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 "${videoPath}"`
-  )
-    .toString()
-    .trim();
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text`;
 
-  const fpsStr = execSync(
-    `ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of csv=p=0 "${videoPath}"`
-  )
-    .toString()
-    .trim();
+  const events = subtitles.map((s) => {
+    const start = formatAssTime(s.startMs);
+    const end = formatAssTime(s.endMs);
+    return `Dialogue: 0,${start},${end},Default,,0,0,0,,${s.text}`;
+  });
 
-  // r_frame_rate returns as fraction like "30/1"
-  const [fpsNum, fpsDen] = fpsStr.split('/').map(Number);
-  const fps = Math.round(fpsNum / fpsDen);
+  return header + '\n' + events.join('\n') + '\n';
+}
 
-  return {
-    width: parseInt(widthStr, 10),
-    height: parseInt(heightStr, 10),
-    fps,
-    durationInSeconds: parseFloat(durationStr),
-  };
+function formatAssTime(ms: number): string {
+  const totalSeconds = ms / 1000;
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  return `${h}:${String(m).padStart(2, '0')}:${s.toFixed(2).padStart(5, '0')}`;
 }
 
 export async function renderVideo(
   subtitles: SubtitleEntry[],
   videoPath: string
 ): Promise<string> {
-  console.log('[Render] Getting video metadata...');
-  const metadata = getVideoMetadata(videoPath);
-  console.log(
-    `[Render] Video: ${metadata.width}x${metadata.height} @ ${metadata.fps}fps, ${metadata.durationInSeconds.toFixed(1)}s`
-  );
+  console.log('[Render] Generating ASS subtitle file...');
 
-  const durationInFrames = Math.ceil(metadata.durationInSeconds * metadata.fps);
+  fs.mkdirSync(path.dirname(OUTPUT_PATH), { recursive: true });
+  fs.mkdirSync(path.resolve('./tmp'), { recursive: true });
 
-  console.log('[Render] Bundling Remotion project...');
-  const bundleLocation = await bundle({
-    entryPoint: path.resolve('./src/index.tsx'),
-  });
+  const assPath = path.resolve('./tmp/subtitles.ass');
+  const assContent = generateAssSubtitles(subtitles);
+  fs.writeFileSync(assPath, assContent);
+  console.log(`[Render] ASS file written to: ${assPath}`);
 
-  const inputProps = {
-    subtitles,
-    videoFileName: 'input.mp4',
-  };
+  // Use ffmpeg to burn subtitles onto the video
+  console.log('[Render] Rendering video with ffmpeg...');
 
-  console.log('[Render] Selecting composition...');
-  const composition = await selectComposition({
-    serveUrl: bundleLocation,
-    id: 'SubtitledVideo',
-    inputProps,
-  });
+  const fontDir = path.dirname(FONT_PATH);
+  const cmd = [
+    'ffmpeg -y',
+    `-i "${videoPath}"`,
+    `-vf "ass=${assPath}:fontsdir=${fontDir}"`,
+    '-c:v libx264 -preset medium -crf 23',
+    '-c:a copy',
+    `"${OUTPUT_PATH}"`,
+  ].join(' ');
 
-  // Override with actual video metadata
-  composition.width = metadata.width;
-  composition.height = metadata.height;
-  composition.fps = metadata.fps;
-  composition.durationInFrames = durationInFrames;
-
-  console.log(`[Render] Rendering ${durationInFrames} frames...`);
-  await renderMedia({
-    composition,
-    serveUrl: bundleLocation,
-    codec: 'h264',
-    outputLocation: OUTPUT_PATH,
-    inputProps,
-  });
+  console.log(`[Render] Command: ${cmd}`);
+  execSync(cmd, { stdio: 'inherit' });
 
   console.log(`[Render] Output saved to: ${OUTPUT_PATH}`);
   return OUTPUT_PATH;
