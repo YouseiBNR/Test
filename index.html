@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0a0a1a">
+  <title>ジャグラー設定推測ツール</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Tesseract.js (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <!-- Chart.js (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+</head>
+<body>
+
+  <!-- ヘッダー -->
+  <header class="header">
+    <h1>JUGGLER ANALYZER</h1>
+    <div class="subtitle">データカウンターから設定を推測</div>
+  </header>
+
+  <main class="container">
+
+    <!-- 入力方法選択 -->
+    <div class="tab-container">
+      <button class="tab-btn active" data-tab="camera">📷 写真で入力</button>
+      <button class="tab-btn" data-tab="manual">⌨️ 手動入力</button>
+    </div>
+
+    <!-- カメラ入力セクション -->
+    <div id="tab-camera" class="card">
+      <div class="card-title"><span class="icon">📸</span> データカウンターを撮影</div>
+      <div class="camera-area" id="camera-area">
+        <div class="placeholder" id="camera-placeholder">
+          <span class="icon">📷</span>
+          <span>タップして写真を撮影 / 選択</span>
+        </div>
+        <img id="preview-image" style="display:none;" alt="プレビュー">
+      </div>
+      <input type="file" id="camera-input" accept="image/*" capture="environment" style="display:none;">
+      <div id="ocr-status"></div>
+      <div class="ocr-result-notice" id="ocr-notice" style="display:none;">
+        ⚠️ OCR結果を下記に反映しました。数値が正しいか確認してください。データカウンターの種類によっては読み取り精度が低い場合があります。
+      </div>
+    </div>
+
+    <!-- 手動入力セクション -->
+    <div id="tab-manual" class="card" style="display:none;">
+      <div class="card-title"><span class="icon">⌨️</span> データを入力</div>
+    </div>
+
+    <!-- 共通入力フォーム -->
+    <div class="card">
+      <div class="card-title"><span class="icon">🎰</span> 台データ</div>
+
+      <div class="form-group">
+        <label>機種を選択</label>
+        <select id="model-select">
+          <option value="マイジャグラーV">マイジャグラーV</option>
+          <option value="アイムジャグラーEX" selected>アイムジャグラーEX</option>
+          <option value="ファンキージャグラー2">ファンキージャグラー2</option>
+          <option value="ハッピージャグラーVIII">ハッピージャグラーVIII</option>
+          <option value="ゴーゴージャグラー3">ゴーゴージャグラー3</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>総回転数 (G)</label>
+        <input type="number" id="total-games" placeholder="例: 3500" min="0" max="99999" inputmode="numeric">
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>BIG回数</label>
+          <input type="number" id="bb-count" placeholder="例: 12" min="0" max="999" inputmode="numeric">
+        </div>
+        <div class="form-group">
+          <label>REG回数</label>
+          <input type="number" id="rb-count" placeholder="例: 8" min="0" max="999" inputmode="numeric">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>レート</label>
+          <select id="rate-select">
+            <option value="20">20円スロット</option>
+            <option value="10">10円スロット</option>
+            <option value="5">5円スロット</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>残り予定ゲーム数</label>
+          <input type="number" id="remaining-games" value="2000" min="100" max="10000" inputmode="numeric">
+        </div>
+      </div>
+
+      <button class="btn btn-primary" id="analyze-btn">分析する</button>
+    </div>
+
+    <!-- 結果エリア -->
+    <div id="results">
+
+      <!-- 判定バナー -->
+      <div class="verdict-banner" id="verdict-banner">
+        <div class="verdict-text" id="verdict-text"></div>
+        <div class="verdict-explanation" id="verdict-explanation"></div>
+        <div class="confidence-meter">
+          <span class="confidence-label">信頼度:</span>
+          <div class="confidence-bar">
+            <div class="confidence-fill" id="confidence-fill"></div>
+          </div>
+          <span class="confidence-label" id="confidence-text"></span>
+        </div>
+      </div>
+
+      <!-- 実測データ -->
+      <div class="card">
+        <div class="card-title"><span class="icon">📊</span> 実測データ</div>
+        <div class="stats-grid">
+          <div class="stat-item">
+            <div class="stat-label">BB確率</div>
+            <div class="stat-value" id="actual-bb-ratio">-</div>
+            <div class="stat-sub" id="actual-bb-sub"></div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">RB確率</div>
+            <div class="stat-value" id="actual-rb-ratio">-</div>
+            <div class="stat-sub" id="actual-rb-sub"></div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">合算確率</div>
+            <div class="stat-value" id="actual-combined-ratio">-</div>
+            <div class="stat-sub" id="actual-combined-sub"></div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">ボーナス合計</div>
+            <div class="stat-value" id="total-bonus">-</div>
+            <div class="stat-sub" id="total-bonus-sub"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 期待収支 -->
+      <div class="card">
+        <div class="card-title"><span class="icon">💰</span> 期待収支</div>
+        <div class="stats-grid">
+          <div class="stat-item">
+            <div class="stat-label">推定機械割</div>
+            <div class="stat-value" id="weighted-payout">-</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">期待収支</div>
+            <div class="stat-value" id="expected-profit">-</div>
+            <div class="stat-sub" id="expected-profit-sub"></div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">高設定確率</div>
+            <div class="stat-value" id="high-setting-prob">-</div>
+            <div class="stat-sub">設定4以上</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">設定56確率</div>
+            <div class="stat-value" id="setting-56-prob">-</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 設定推測テーブル -->
+      <div class="card">
+        <div class="card-title"><span class="icon">🔍</span> 設定別推測確率</div>
+        <table class="setting-table">
+          <thead>
+            <tr>
+              <th>設定</th>
+              <th>確率</th>
+              <th>BB理論値</th>
+              <th>RB理論値</th>
+              <th>機械割</th>
+            </tr>
+          </thead>
+          <tbody id="setting-table-body">
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 設定確率チャート -->
+      <div class="card">
+        <div class="card-title"><span class="icon">📈</span> 設定確率分布</div>
+        <div class="chart-container">
+          <canvas id="setting-chart"></canvas>
+        </div>
+      </div>
+
+      <!-- 確率比較チャート -->
+      <div class="card">
+        <div class="card-title"><span class="icon">📉</span> 理論値 vs 実測値</div>
+        <div class="chart-container">
+          <canvas id="comparison-chart"></canvas>
+        </div>
+      </div>
+
+      <!-- 履歴保存 -->
+      <div style="margin-top:16px;">
+        <button class="btn btn-secondary" id="save-history-btn">📋 この結果を保存</button>
+      </div>
+    </div>
+
+    <!-- 履歴セクション -->
+    <div class="card" id="history-section" style="display:none;">
+      <div class="card-title"><span class="icon">📋</span> 分析履歴</div>
+      <div id="history-list"></div>
+      <button class="btn btn-secondary btn-sm" id="clear-history-btn" style="margin-top:12px;">履歴をクリア</button>
+    </div>
+
+  </main>
+
+  <footer class="footer">
+    ※ 本ツールは統計的な推測であり、結果を保証するものではありません。<br>
+    パチスロはあくまで遊びの範囲でお楽しみください。
+  </footer>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
